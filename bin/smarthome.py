@@ -107,11 +107,11 @@ class LogHandler(logging.StreamHandler):
 class SmartHome():
 
     base_dir = BASE
-    _plugin_conf = BASE + '/etc/plugin.conf'
+    _plugin_conf = BASE + '/etc/plugin.yaml'
     _env_dir = BASE + '/lib/env/'
-    _env_logic_conf = _env_dir + 'logic_conf'
+    _env_logic_conf = _env_dir + 'logic.conf.yaml'
     _items_dir = BASE + '/items/'
-    _logic_conf = BASE + '/etc/logic.conf'
+    _logic_conf = BASE + '/etc/logic.yaml'
     _logic_dir = BASE + '/logics/'
     _cache_dir = BASE + '/var/cache/'
     _logfile = BASE + '/var/log/smarthome.log'
@@ -125,7 +125,7 @@ class SmartHome():
     __item_dict = {}
     _utctz = TZ
 
-    def __init__(self, smarthome_conf=BASE + '/etc/smarthome.conf'):
+    def __init__(self, smarthome_conf=BASE + '/etc/smarthome.yaml'):
 
         # set default timezone to UTC
         global TZ
@@ -199,7 +199,7 @@ class SmartHome():
         sys.excepthook = self._excepthook
 
         #############################################################
-        # Reading smarthome.conf
+        # Reading smarthome.yaml
         #############################################################
         try:
             config = lib.config.parse(smarthome_conf)
@@ -208,7 +208,7 @@ class SmartHome():
                     vars(self)['_' + attr] = config[attr]
             del(config)  # clean up
         except Exception as e:
-            logger.warning("Problem reading smarthome.conf: {0}".format(e))
+            logger.warning("Problem reading smarthome.yaml: {0}".format(e))
 
         #############################################################
         # Setting debug level and adding memory handler
@@ -226,7 +226,7 @@ class SmartHome():
         logging.getLogger('').addHandler(log_mem)
 
         #############################################################
-        # Setting (local) tz if set in smarthome.conf
+        # Setting (local) tz if set in smarthome.yaml
         #############################################################
         if hasattr(self, '_tz'):
             tzinfo = gettz(self._tz)
@@ -294,13 +294,13 @@ class SmartHome():
         logger.info("Init Items")
         item_conf = None
         for item_file in sorted(os.listdir(self._env_dir)):
-            if item_file.endswith('.conf'):
+            if item_file.endswith('.yaml'):
                 try:
                     item_conf = lib.config.parse(self._env_dir + item_file, item_conf)
                 except Exception as e:
                     logger.exception("Problem reading {0}: {1}".format(item_file, e))
         for item_file in sorted(os.listdir(self._items_dir)):
-            if item_file.endswith('.conf'):
+            if item_file.endswith('.yaml'):
                 try:
                     item_conf = lib.config.parse(self._items_dir + item_file, item_conf)
                 except Exception as e:

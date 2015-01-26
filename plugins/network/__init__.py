@@ -127,11 +127,11 @@ class Network():
         self.udp_acl = self.parse_acl(udp_acl)
         self.http_acl = self.parse_acl(http_acl)
         if tcp == 'yes':
-            self.add_listener('tcp', ip, port, tcp_acl, generic=True)
+            self.add_listener('tcp', ip, str(port), tcp_acl, generic=True)
         if udp == 'yes':
-            self.add_listener('udp', ip, port, udp_acl, generic=True)
+            self.add_listener('udp', ip, str(port), udp_acl, generic=True)
         if http != 'no':
-            self.add_listener('http', ip, http, http_acl, generic=True)
+            self.add_listener('http', ip, str(http), http_acl, generic=True)
 
     def udp(self, host, port, data):
         try:

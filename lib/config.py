@@ -21,85 +21,57 @@
 
 import logging
 import collections
+import yaml
 
 logger = logging.getLogger('')
 
 
-def strip_quotes(string):
-    string = string.strip()
-    if string[0] in ['"', "'"]:  # check if string starts with ' or "
-        if string[0] == string[-1]:  # and end with it
-            if string.count(string[0]) == 2:  # if they are the only one
-                string = string[1:-1]  # remove them
-    return string
-
-
 def parse(filename, config=None):
-    valid_chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
-    valid_set = set(valid_chars)
+    stream = open(filename, 'r')
+    ya = yaml.load(stream)
     if config is None:
         config = collections.OrderedDict()
-    item = config
-    with open(filename, 'r', encoding='UTF-8') as f:
-        linenu = 0
-        parent = collections.OrderedDict()
-        for raw in f.readlines():
-            linenu += 1
-            line = raw.lstrip('\ufeff')  # remove BOM
-            line = line.partition('#')[0].strip()
-            if line is '':
-                continue
-            if line[0] == '[':  # item
-                brackets = 0
-                level = 0
-                closing = False
-                for index in range(len(line)):
-                    if line[index] == '[' and not closing:
-                        brackets += 1
-                        level += 1
-                    elif line[index] == ']':
-                        closing = True
-                        brackets -= 1
+    if ya is not None:
+        data_merge(config,ya)
+    return config
+
+class YamlReaderError(Exception):
+    pass
+
+def data_merge(a, b):
+    """merges b into a and return merged result
+
+    NOTE: tuples and arbitrary objects are not handled as it is totally ambiguous what should happen"""
+    key = None
+    # ## debug output
+    # sys.stderr.write("DEBUG: %s to %s\n" %(b,a))
+    try:
+        if a is None or isinstance(a, str) or isinstance(a, int) or isinstance(a, float):
+            # border case for first run or if a is a primitive
+            a = b
+        elif isinstance(a, list):
+            # lists can be only appended
+            if isinstance(b, list):
+                # merge lists
+                a.extend(b)
+            else:
+                # append to list
+                a.append(b)
+        elif isinstance(a, dict):
+            # dicts must be merged
+            if isinstance(b, dict):
+                for key in b:
+                    if key in a:
+                        a[key] = data_merge(a[key], b[key])
                     else:
-                        closing = True
-                        if line[index] not in valid_chars + "'":
-                            logger.error("Problem parsing '{}' invalid character in line {}: {}. Valid characters are: {}".format(filename, linenu, line, valid_chars))
-                            return config
-                if brackets != 0:
-                    logger.error("Problem parsing '{}' unbalanced brackets in line {}: {}".format(filename, linenu, line))
-                    return config
-                name = line.strip("[]")
-                name = strip_quotes(name)
-                if level == 1:
-                    if name not in config:
-                        config[name] = collections.OrderedDict()
-                    item = config[name]
-                    parents = collections.OrderedDict()
-                    parents[level] = item
-                else:
-                    if level - 1 not in parents:
-                        logger.error("Problem parsing '{}' no parent item defined for item in line {}: {}".format(filename, linenu, line))
-                        return config
-                    parent = parents[level - 1]
-                    if name not in parent:
-                        parent[name] = collections.OrderedDict()
-                    item = parent[name]
-                    parents[level] = item
-
-            else:  # attribute
-                attr, __, value = line.partition('=')
-                if not value:
-                    continue
-                attr = attr.strip()
-                if not set(attr).issubset(valid_set):
-                    logger.error("Problem parsing '{}' invalid character in line {}: {}. Valid characters are: {}".format(filename, linenu, attr, valid_chars))
-                    continue
-                if '|' in value:
-                    item[attr] = [strip_quotes(x) for x in value.split('|')]
-                else:
-                    item[attr] = strip_quotes(value)
-        return config
-
+                        a[key] = b[key]
+            else:
+                raise YamlReaderError('Cannot merge non-dict "%s" into dict "%s"' % (b, a))
+        else:
+            raise YamlReaderError('NOT IMPLEMENTED "%s" into "%s"' % (b, a))
+    except TypeError as e:
+        raise YamlReaderError('TypeError "%s" in key "%s" when merging "%s" into "%s"' % (e, key, b, a))
+    return a
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
