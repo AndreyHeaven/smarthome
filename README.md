@@ -14,19 +14,19 @@ In this configuration file you configure the plugins and their attributes.
 In the logic.conf you specify your logics and when they will be run.
 <pre>
 # etc/logic.conf
-[AtSunset]
-    filename = sunset.py
-    crontab = sunset
+AtSunset:
+    filename: sunset.py
+    crontab: sunset
 </pre>
 
 ### items/
 This directory contains one or more item configuration files. The filename does not matter, except it has to end with '.conf'.
 <pre>
 # items/global.conf
-[global]
-    [[sun]]
-        type = bool
-        attribute = foo
+global:
+    sun:
+        type: bool
+        attribute: foo
 </pre>
 
 ### logics/
