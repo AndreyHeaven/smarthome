@@ -27,6 +27,7 @@ import logging
 import struct
 import time
 import threading
+from . import eep_parser
 
 FCSTAB = [
     0x00, 0x07, 0x0e, 0x09, 0x1c, 0x1b, 0x12, 0x15,
@@ -105,108 +106,7 @@ class EnOcean():
         self._response_lock = threading.Condition()
         self._rx_items = {}
         self._block_ext_out_msg = False
-
-    def _parse_eep_A5_3F_7F(self, payload):
-        #logger.debug("enocean: processing A5_3F_7F")
-        results = {'DI_3': (payload[3] & 1 << 3) == 1 << 3, 'DI_2': (payload[3] & 1 << 2) == 1 << 2, 'DI_1': (payload[3] & 1 << 1) == 1 << 1, 'DI_0': (payload[3] & 1 << 0) == 1 << 0}
-        results['AD_0'] = (((payload[1] & 0x03) << 8) + payload[2]) * 1.8 / pow(2, 10)
-        results['AD_1'] = (payload[1] >> 2) * 1.8 / pow(2, 6)
-        results['AD_2'] = payload[0] * 1.8 / pow(2, 8)
-        return results
-
-    def _parse_eep_A5_12_01(self, payload):
-        # Status command from switche actor with powermeter, for example eltako FSVA-230, RORG = 0x07
-        logger.debug("enocean: processing A5_12_01")
-        results = {}
-        status = payload[3]
-        value = (payload[0] << 16) + (payload[1] << 8) + payload[2]
-        results['VALUE'] = value
-        return results
-
-    def _parse_eep_D5_00_01(self, payload):
-        #ORG = 0x06
-        #Window/Door Contact Sensor, for example Eltako FTK, FTKB
-        logger.debug("enocean: processing D5_00_01: Door contact")
-        results = {}
-        #door/window closed
-        if (payload[0] == 0x09):
-            results['STATUS'] = False
-        #door/window open
-        elif (payload[0] == 0x08):
-            results['STATUS'] = True
-        return results
-
-    def _parse_eep_F6_02_03(self, payload):
-        #Repeated switch communication(RPS) Telegramm, RORG = F6 = ORG = 0x05
-        # Status command from bidirectional actors, for example eltako FSUD-230, FSVA-230V or switches (for example Gira)
-        logger.debug("enocean: processing F6_02_03: Rocker Switch, 2 Rocker")
-        results = {}
-        #Button A1: Dimm light down
-        results['A1'] = (payload[0]) == 0x10
-        #Button A0: Dimm light up
-        results['A0'] = (payload[0]) == 0x30
-        #Button B1: Dimm light down
-        results['B1'] = (payload[0]) == 0x50
-        #Button B0: Dimm light up
-        results['B0'] = (payload[0]) == 0x70
-        if (payload[0] == 0x70):
-            results['B'] = True
-        elif (payload[0] == 0x50):
-            results['B'] = False
-        elif (payload[0] == 0x30):
-            results['A'] = True
-        elif (payload[0] == 0x10):
-            results['A'] = False
-        return results
-
-    def _parse_eep_F6_10_00(self, payload):
-        logger.debug("enocean: processing F6_10_00: Mechanical Handle")
-        results = {}
-        if (payload[0] == 0xF0):
-            results['STATUS'] = 0
-        elif ((payload[0]) == 0xE0) or ((payload[0]) == 0xC0):
-            results['STATUS'] = 1
-        # Typo error in Eltako Datasheet for 0x0D instead of the right 0xD0
-        elif (payload[0] == 0xD0):
-            results['STATUS'] = 2
-        else:
-            logger.error("enocean: error in F6_10_00 handle status")
-        return results
-
-    def _parse_eep_A5_38_08(self, payload):
-        results = {}
-        if (payload[1] == 2):  # Dimming
-            results['EDIM'] = payload[2]
-            results['RMP'] = payload[3]
-            results['LRNB'] = ((payload[4] & 1 << 3) == 1 << 3)
-            results['EDIM_R'] = ((payload[4] & 1 << 2) == 1 << 2)
-            results['STR'] = ((payload[4] & 1 << 1) == 1 << 1)
-            results['SW'] = ((payload[4] & 1 << 0) == 1 << 0)
-        return results
-
-    def _parse_eep_F6_02_02(self, payload):
-        logger.debug("enocean: processing F6_02_02: Rocker Switch, 2 Rocker")
-        results = {'A1': (payload[0] == 16), 'A0': (payload[0] == 48), 'B1': (payload[0] == 80), 'B0': (payload[0] == 112), 'A1B1': (payload[0] == 21), 'A0B0': (payload[0] == 55)}
-        return results
-
-    def _parse_eep_A5_11_04(self, payload):
-        #4 Byte communication (4BS) Telegramm, RORG = A5 = ORG = 0x07
-        # For example dim status feedback from eltako FSUD-230 actor.
-        #Data_byte3 = 0x02
-        #Data_byte2 = Dimmwert in % von 0-100 dez.
-        #Data_byte1 = 0x00
-        #Data_byte0 = 0x08 = Dimmer aus, 0x09 = Dimmer an
-        logger.debug("enocean: processing A5_11_04: Dimmer Status on/off")
-        results = {}
-        #if !( (payload[0] == 0x02) and (payload[2] == 0x00)):
-        #    logger.error("enocean: error in processing A5_11_04: static byte missmatch")
-        #    return results
-        results['D'] = payload[1]
-        if (payload[3] == 0x08):               # Dimmer is off
-            results['STAT'] = 0
-        elif (payload[3] == 0x09):             # Dimmer is on
-            results['STAT'] = 1
-        return results
+        self.eep_parser = eep_parser.EEP_Parser()
 
     def eval_telegram(self, sender_id, data, opt):
         for item in self._items:
@@ -234,6 +134,28 @@ class EnOcean():
         else:
             logger.warning("enocean: unknown event packet received")
 
+    def _rocker_sequence(self, item, sender_id, sequence):
+        try:
+            for step in sequence:
+                event, relation, delay = step.split()             
+                #logger.debug("waiting for {} {} {}".format(event, relation, delay))
+                if item._enocean_rs_events[event.upper()].wait(float(delay)) != (relation.upper() == "WITHIN"):
+                    logger.debug("NOT {} - aborting sequence!".format(step))
+                    return
+                else:
+                    logger.debug("{}".format(step))
+                    item._enocean_rs_events[event.upper()].clear()
+                    continue          
+            value = True
+            if 'enocean_rocker_action' in item.conf:
+                if item.conf['enocean_rocker_action'].upper() == "UNSET":
+                    value = False
+                elif item.conf['enocean_rocker_action'].upper() == "TOGGLE":
+                    value = not item()
+            item(value, 'EnOcean', "{:08X}".format(sender_id))
+        except Exception as e:
+            logger.error("enocean: error handling enocean_rocker_sequence \"{}\" - {}".format(sequence, e))        
+
     def _process_packet_type_radio(self, data, optional):
         #logger.warning("enocean: processing radio message with data = [{}] / optional = [{}]".format(', '.join(['0x%02x' % b for b in data]), ', '.join(['0x%02x' % b for b in optional])))
 
@@ -249,7 +171,7 @@ class EnOcean():
             dest_id = int.from_bytes(optional[1:5], byteorder='big', signed=False)
             dBm = -optional[5]
             SecurityLevel = optional[6]
-            logger.info("enocean: radio message with additional info: subtelnum = {} / dest_id = {:08X} / signal = {}dBm / SecurityLevel = {}".format(subtelnum, dest_id, dBm, SecurityLevel))
+            logger.debug("enocean: radio message with additional info: subtelnum = {} / dest_id = {:08X} / signal = {}dBm / SecurityLevel = {}".format(subtelnum, dest_id, dBm, SecurityLevel))
 
         if sender_id in self._rx_items:
             logger.debug("enocean: Sender ID found in item list")
@@ -257,13 +179,31 @@ class EnOcean():
             for eep,items in self._rx_items[sender_id].items():
                 # check if choice matches first byte in eep (this seems to be the only way to find right eep for this particular packet)
                 if eep.startswith("{:02X}".format(choice)):
-                    # call parsing method for particular eep - returns dict with key-value pairs
-                    results = getattr(self, "_parse_eep_" + eep)(payload)
-                    logger.info("enocean: radio message results = {}".format(results))
+                    # call parser for particular eep - returns dictionary with key-value pairs
+                    results = self.eep_parser.Parse(eep, payload, status)
+                    #logger.debug("enocean: radio message results = {}".format(results))
                     for item in items:
                         rx_key = item.conf['enocean_rx_key'].upper()
                         if rx_key in results:
-                            item(results[rx_key], 'EnOcean', "{:08X}".format(sender_id))
+                            if 'enocean_rocker_sequence' in item.conf:
+                                try:   
+                                    if hasattr(item, '_enocean_rs_thread') and item._enocean_rs_thread.isAlive():
+                                        if results[rx_key]:
+                                            logger.debug("sending pressed event")
+                                            item._enocean_rs_events["PRESSED"].set()
+                                        else:
+                                            logger.debug("sending released event")
+                                            item._enocean_rs_events["RELEASED"].set()
+                                    elif results[rx_key]:
+                                        item._enocean_rs_events = {'PRESSED': threading.Event(), 'RELEASED': threading.Event()}
+                                        item._enocean_rs_thread = threading.Thread(target=self._rocker_sequence, name="enocean-rs", args=(item, sender_id, item.conf['enocean_rocker_sequence'].split(','), ))
+                                        #logger.info("starting enocean_rocker_sequence thread")
+                                        item._enocean_rs_thread.daemon = True
+                                        item._enocean_rs_thread.start()
+                                except Exception as e:
+                                    logger.error("enocean: error handling enocean_rocker_sequence - {}".format(e))
+                            else:
+                                item(results[rx_key], 'EnOcean', "{:08X}".format(sender_id))
         elif (sender_id <= self.tx_id + 127) and (sender_id >= self.tx_id):
             logger.debug("enocean: Received repeated enocean stick message")
         else:
@@ -398,13 +338,13 @@ class EnOcean():
             while (not 'enocean_rx_eep' in eep_item.conf):
                 eep_item = eep_item.return_parent()
                 if (eep_item is self._sh):
-                    logger.error("enocean: could not find enocean_eep for item {}".format(item))
+                    logger.error("enocean: could not find enocean_rx_eep for item {}".format(item))
                     return None
             id_item = eep_item
             while (not 'enocean_rx_id' in id_item.conf):
                 id_item = id_item.return_parent()
                 if (id_item is self._sh):
-                    logger.error("enocean: could not find enocean_id for item {}".format(item))
+                    logger.error("enocean: could not find enocean_rx_id for item {}".format(item))
                     return None
 
             rx_key = item.conf['enocean_rx_key'].upper()
@@ -412,9 +352,12 @@ class EnOcean():
             rx_id = int(id_item.conf['enocean_rx_id'],16)
 
             # check if there is a function to parse payload
-            if not callable(getattr(self, "_parse_eep_" + rx_eep, None)):
-                logger.error("enocean: item {} misses parser for eep {} - should be a _parse_eep_{}-function!".format(item, rx_eep, rx_eep))
+            if not self.eep_parser.CanParse(rx_eep):
                 return None
+
+            if (rx_key in ['A0', 'A1', 'B0', 'B1']):
+                logger.warning("enocean: key \"{}\" does not match EEP - \"0\" (Zero, number) should be \"O\" (letter) (same for \"1\" and \"I\") - will be accepted for now".format(rx_key))
+                rx_key = rx_key.replace('0', 'O').replace("1", 'I')
 
             if (not rx_id in self._rx_items):
                 self._rx_items[rx_id] = {rx_eep: [item]}
@@ -441,11 +384,11 @@ class EnOcean():
                     if 'enocean_tx_id_offset' in item.conf and (isinstance(item.conf['enocean_tx_id_offset'], str)):
                         logger.debug('enocean: item has valid enocean_tx_id_offset')
                         id_offset = int(item.conf['enocean_tx_id_offset'])
-                    #if (isinstance(item(), bool)):
-                    #if item.conf['type'] == bool:
                     #Identify send command based on tx_eep coding:
-                    if(tx_eep == 'A5_38_08_02'):
-                        #if isinstance(item, bool):
+                    if(tx_eep == 'A5_20_04'):
+                        self.send_radiator_valve(id_offset)
+                        logger.debug('enocean: sent A5_20_04 radiator valve command')
+                    elif(tx_eep == 'A5_38_08_02'):
                         logger.debug('enocean: item is A5_38_08_02 type')
                         if not item():
                             self.send_dim(id_offset, 0, 0)
@@ -467,12 +410,16 @@ class EnOcean():
                         logger.debug('enocean: item is A5_38_08_01 type')
                         self.send_switch(id_offset, item(), 0)
                         logger.debug('enocean: sent switch command')
+                    elif(tx_eep == '07_3F_7F'):
+                        logger.debug('enocean: item is 07_3F_7F type')
+                        self.send_rgbw_dim(id_offset, item(), 0)
+                        logger.debug('enocean: sent RGBW dim command')
                     else:
                         logger.error('enocean: error: Unknown tx eep command')
                 else:
                     logger.error('enocean: tx_eep is not a string value')
             else:
-                logger.warning('enocean: item has no tx_eep value')
+                logger.debug('enocean: item has no tx_eep value')
 
     def read_num_securedivices(self):
         self._send_common_command(CO_RD_NUMSECUREDEVICES)
@@ -549,17 +496,73 @@ class EnOcean():
         self._response_lock.release()
         self._cmd_lock.release()
 
+    def send_radiator_valve(self,item, id_offset=0):
+        logger.debug("enocean: sending valve command A5_20_04")
+        temperature = item()
+        #define default values:
+        MC  = 1 #off
+        WUC = 3 # 120 seconds
+        BLC = 0 # unlocked
+        LRNB = 1# data
+        DSO = 0 # 0 degree
+        valve_position = 50
+
+        for sibling in get_children(item.parent):
+            if hasattr(sibling, "MC"):
+                MC = sibling()
+            if hasattr(sibling, "WUC"):
+                WUC = sibling()
+            if hasattr(sibling, "BLC"):
+                BLC = sibling()
+            if hasattr(sibling, "LRNB"):
+                LRNB = sibling()
+            if hasattr(sibling, "DSO"):
+                DSO = sibling()
+            if hasattr(sibling, "VALVE_POSITION"):
+                valve_position = sibling()
+        TSP = int((temperature -10)*255/30)
+        status =  0 + (MC << 1) + (WUC << 2) 
+        status2 = (BLC << 5) + (LRNB << 4) + (DSO << 2) 
+        self._send_radio_packet(id_offset, 0xA5, [valve_position, TSP, status , status2])
+
+    def send_learn_radiator_valve(self, id_offset=0):
+        if (id_offset < 0) or (id_offset > 127):
+            logger.error("enocean: ID offset out of range (0-127). Aborting.")
+            return
+        logger.info("enocean: sending learn telegram for radiator valve")
+        self._send_radio_packet(id_offset, 0xA5, [0x00, 0x00, 0x00, 0x00])
+
+
     def send_dim(self,id_offset=0, dim=0, dimspeed=0):
         if (dimspeed < 0) or (dimspeed > 255):
             logger.error("enocean: sending dim command A5_38_08: invalid range of dimspeed")
             return
         logger.debug("enocean: sending dim command A5_38_08")
         if (dim == 0):
-            self._send_radio_packet(id_offset, 0xA5, [0x02, 0x00, dimspeed, 0x08])
+            self._send_radio_packet(id_offset, 0xA5, [0x02, 0x00, int(dimspeed), 0x08])
         elif (dim > 0) and (dim <= 100):
-            self._send_radio_packet(id_offset, 0xA5, [0x02, dim, dimspeed, 0x09])
+            self._send_radio_packet(id_offset, 0xA5, [0x02, int(dim), int(dimspeed), 0x09])
         else:
             logger.error("enocean: sending command A5_38_08: invalid dim value")
+
+    def send_rgbw_dim(self,id_offset=0, color='red', dim=0, dimspeed=0):
+        if(color == str(red)):
+            color_hex_code = 0x10
+        elif(color == str(green)):
+            color_hex_code = 0x11
+        elif(color == str(blue)):
+            color_hex_code = 0x12
+        elif(color == str(white)):
+            color_hex_code = 0x13
+        else:
+            logger.error("enocean: sending rgbw dim command: invalid color")
+            return
+        if (dim < 0) or (dim > 1023):
+            logger.error("enocean: sending rgb dim command: invalid dim value range. Only 10 bit allowed")
+            return
+        self._send_radio_packet(id_offset, 0x07, [ list(dim.to_bytes(2, byteorder='big')), color_hex_code, 0x0F])
+        logger.debug("enocean: sent dim command 07_3F_7F")
+
 
     def send_switch(self,id_offset=0, on=0, block=0):
         if (block < 0) and (block > 1):
@@ -579,6 +582,13 @@ class EnOcean():
             return
         logger.info("enocean: sending learn telegram for dim command")
         self._send_radio_packet(id_offset, 0xA5, [0x02, 0x00, 0x00, 0x00])
+
+    def send_learn_rgbw_dim(self, id_offset=0):
+        if (id_offset < 0) or (id_offset > 127):
+            logger.error("enocean: ID offset out of range (0-127). Aborting.")
+            return
+        logger.info("enocean: sending learn telegram for rgbw dim command")
+        self._send_radio_packet(id_offset, 0x07, [0xFF, 0xF8, 0x0D, 0x87])
 
     def send_learn_switch(self, id_offset=0):
         if (id_offset < 0) or (id_offset > 127):

@@ -1,17 +1,17 @@
-# Whatsapp - Yowsup 2 - Alpha Version!
+# Whatsapp - Yowsup 2
 
 # Requirements/Description
 
 This Plugin uses Yowsup 2 as basis: https://github.com/tgalal/yowsup
-You have to install Yowsup 2 on your system before using this plugin. Yowsup 2 is not delivered with this plugin!
-
+You have to install Yowsup 2 from May 6, 2015 or newer on your system before using this plugin. Yowsup 2 is not delivered with this plugin!
+Please ensure that the latest Yowsup 2 version is in your pythonpath and used by this plugin.
 
 To use this Plugin you need:
 * Free PhoneNumber
 * PhoneNumber registered on Whatsapp. see: http://www.forum-raspberrypi.de/Thread-tutorial-mit-dem-pi-ueber-whatsapp-nachrichten-etc-senden
 
 # Known Bugs
-Plugin will not work after a while in idle mode. There are problems with keepalive/reconnecting. Not recommend for productive use!
+Reconnect is on connection loss is buggy.
 
 # Configuration
 
@@ -22,15 +22,16 @@ Plugin will not work after a while in idle mode. There are problems with keepali
 	class_name = Whatsapp
 	class_path = plugins.whatsapp
 	account = '4917912345678'
-	password = 'abcdefghi...'
+	password = 'abcdefghi='
 	trusted = 4917912345678 4917912345679
 	logic = 'Logi_Whatsapp'
+
 </pre>
 
 Description of the attributes:
 
 * account: Registered Whatsapp PhoneNumber including country code, without '+' or '00' eg. 417912345678 (Switzerland/Swisscom) (Yowsup:phone)
-* password: Password to use for login. (Yowsup:password)
+* password: Password to use for login. Base64 encoded. (Yowsup:password)
 * trusted: Space separated List with PhoneNumbers you Trust
 * logic: Logic that is called when msg from trusted number is received
 
@@ -49,7 +50,7 @@ trigger['source']   The Sender
 * sending a Message
 
 <pre>
-* sh.whatsapp("Message to send", "417912345678") #Will send to a explicite PhoneNumber.
+* sh.whatsapp("Message to send", "497912345678") #Will send to a explicite PhoneNumber.
 </pre>
 If no phoneNumeber is set, it will take the first number from the trusted numbers
 
@@ -59,7 +60,7 @@ If no phoneNumeber is set, it will take the first number from the trusted number
 msg = trigger['value']
 absender = trigger['source']
 
-if msg == "Zuhause?":
-    antwort = "Ja" if sh.presenz.anwesend() else "Nein"
-    sh.whatsapp(antwort)
+if msg == "athome?":
+    answer = "yes" if sh.myitem.athome() else "no"
+    sh.whatsapp(answer)
 
